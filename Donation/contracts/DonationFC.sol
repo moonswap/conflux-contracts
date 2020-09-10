@@ -169,7 +169,8 @@ contract DonationFC is IERC777Recipient, Ownable
         require(_userInfo.withdrawFCAmount < _amount, "harvest: no balance");
         uint256 _withdrawAmount = _amount.sub(_userInfo.withdrawFCAmount);
         _userInfo.withdrawFCAmount = _userInfo.withdrawFCAmount.add(_withdrawAmount);
-
+        Donation storage _donation = donations[fcAddr];
+        _donation.balance = _donation.balance.sub(_withdrawAmount);
         IERC777(fcAddr).send(address(msg.sender), _withdrawAmount, "");
 
         emit Transfered(address(this), msg.sender, _withdrawAmount);
@@ -177,6 +178,9 @@ contract DonationFC is IERC777Recipient, Ownable
 
     // Withdraw without rewards. EMERGENCY ONLY.
     function emergencyWithdraw(address tokenAddress, address to, uint256 _amount) external onlyOwner {
+        Donation storage _donation = donations[tokenAddress];
+        //require(_donation.balance >= _amount, "emergencyWithdraw: balance no enough~");
+        _donation.balance = _donation.balance.sub(_amount);
         IERC777(tokenAddress).send(to, _amount, "");
     }
 
