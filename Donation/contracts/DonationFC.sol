@@ -65,7 +65,7 @@ contract DonationFC is IERC777Recipient, Ownable
         uint256 depositCount;
     }
 
-    mapping(address => Donation) donations;
+    mapping(address => Donation) public donations;
 
     uint256 public tlv; // total locked value
     uint256 public totalReward;
@@ -97,6 +97,8 @@ contract DonationFC is IERC777Recipient, Ownable
         address[] memory users = new address[](1);
         users[0] = address(0);
         SPONSOR.add_privilege(users);
+
+        // fcAddr =
     }
 
     function setFcAddr(address _fcAddr) external onlyOwner {
@@ -176,6 +178,7 @@ contract DonationFC is IERC777Recipient, Ownable
         emit Transfered(address(this), msg.sender, _withdrawAmount);
     }
 
+    // MultiSigWalletWithTimeLock future
     // Withdraw without rewards. EMERGENCY ONLY.
     function emergencyWithdraw(address tokenAddress, address to, uint256 _amount) external onlyOwner {
         Donation storage _donation = donations[tokenAddress];
