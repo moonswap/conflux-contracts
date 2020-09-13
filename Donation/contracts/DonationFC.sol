@@ -97,8 +97,6 @@ contract DonationFC is IERC777Recipient, Ownable
         address[] memory users = new address[](1);
         users[0] = address(0);
         SPONSOR.add_privilege(users);
-
-        // fcAddr =
     }
 
     function setFcAddr(address _fcAddr) external onlyOwner {
@@ -179,7 +177,7 @@ contract DonationFC is IERC777Recipient, Ownable
     }
 
     // MultiSigWalletWithTimeLock future
-    // Withdraw without rewards. EMERGENCY ONLY.
+    // Withdraw EMERGENCY ONLY.
     function emergencyWithdraw(address tokenAddress, address to, uint256 _amount) external onlyOwner {
         Donation storage _donation = donations[tokenAddress];
         //require(_donation.balance >= _amount, "emergencyWithdraw: balance no enough~");
