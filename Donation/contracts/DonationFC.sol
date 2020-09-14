@@ -107,6 +107,7 @@ contract DonationFC is IERC777Recipient, Ownable
         PoolInfo storage poolInfo = targetPools[_targetAddress];
         totalAllocPoint = totalAllocPoint.sub(poolInfo.allocPoint).add(_allocPoint);
         poolInfo.allocPoint = _allocPoint;
+        poolInfo.targetAddress = _targetAddress;
     }
 
     function queryTotalReward(uint256 _tlv) external view returns(uint256 _totalReward){
@@ -114,21 +115,10 @@ contract DonationFC is IERC777Recipient, Ownable
     }
 
     function _calcTotalReward(uint256 _tlv) internal view returns(uint256 _totalReward){
-        uint256 level1 = 33500;
-        uint256 level2 = 84000;
-        uint256 level3 = 242000;
-        uint256 level4 = 317000;
-        uint256 level5 = 370000;
-        if( _tlv >= 1e8){
-            _totalReward = level5.add(level4).add(level3).add(level2).add(level1);
-        }else if( _tlv >= 5e7){
-            _totalReward = level4.add(level3).add(level2).add(level1);
-        }else if( _tlv >= 15 * 1e6) {
-            _totalReward = level3.add(level2).add(level1);
-        }else if( _tlv >= 5e6){
-            _totalReward = level2.add(level1);
-        }else if( _tlv >= 1e6){
-            _totalReward = level1;
+        _totalReward = _tlv.div(100);
+        uint256 _balance = IERC777(fcAddr).balanceOf(address(this));
+        if( _totalReward > _balance.div(ONE)){
+            _totalReward = _balance.div(ONE);
         }
     }
 
@@ -148,6 +138,7 @@ contract DonationFC is IERC777Recipient, Ownable
 
     function _calcUserReward(address _targetAddres, address _user) internal view returns(uint256){
         PoolInfo storage poolInfo = targetPools[_targetAddres];
+        require(poolInfo.targetAddress != address(0), "address is not exists");
         uint256 _poolReward = totalReward.mul(ONE).mul(poolInfo.allocPoint).div(totalAllocPoint);
         uint256 _totalLpTokenBalance = IFundHost(_targetAddres).getTotalLpTokenBal();
         uint256 _userBalance = IFundHost(_targetAddres).getLpTokenBal(_user);
