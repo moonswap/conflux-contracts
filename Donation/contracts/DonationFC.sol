@@ -37,8 +37,8 @@ contract SponsorWhitelistControl {
 }
 
 interface IFundHost {
-    function getLpTokenBal(address to) external view returns (uint256);
-    function getTotalLpTokenBal() external view returns(uint256);
+    function getShareAmount(address to) external view returns (uint256);
+    function getTotalShareAmount() external view returns(uint256);
 }
 
 contract DonationFC is IERC777Recipient, Ownable
@@ -79,7 +79,7 @@ contract DonationFC is IERC777Recipient, Ownable
     mapping(address => PoolInfo) public targetPools;
 
     struct UserInfo {
-        uint256 lpTokenBalance; // LpToken Balance
+        uint256 shareAmount; //
         uint256 withdrawFCAmount;
     }
 
@@ -140,10 +140,10 @@ contract DonationFC is IERC777Recipient, Ownable
         PoolInfo storage poolInfo = targetPools[_targetAddres];
         require(poolInfo.targetAddress != address(0), "address is not exists");
         uint256 _poolReward = totalReward.mul(ONE).mul(poolInfo.allocPoint).div(totalAllocPoint);
-        uint256 _totalLpTokenBalance = IFundHost(_targetAddres).getTotalLpTokenBal();
-        uint256 _userBalance = IFundHost(_targetAddres).getLpTokenBal(_user);
-        if(_totalLpTokenBalance > 0){
-            return _poolReward.mul(_userBalance).div(_totalLpTokenBalance);
+        uint256 _totalShareAmount = IFundHost(_targetAddres).getTotalShareAmount();
+        uint256 _userShareAmount = IFundHost(_targetAddres).getShareAmount(_user);
+        if(_totalShareAmount > 0){
+            return _poolReward.mul(_userShareAmount).div(_totalShareAmount);
         }else{
             return 0;
         }
@@ -154,9 +154,9 @@ contract DonationFC is IERC777Recipient, Ownable
         require(_amount > 0, "harvest: not amount");
         UserInfo storage _userInfo = airdropUsers[_targetAddres][msg.sender];
 
-        uint256 _lpTokenBalance = IFundHost(_targetAddres).getLpTokenBal(msg.sender);
+        uint256 _userShareAmount = IFundHost(_targetAddres).getShareAmount(msg.sender);
 
-        _userInfo.lpTokenBalance = _lpTokenBalance;
+        _userInfo.shareAmount = _userShareAmount;
         require(_userInfo.withdrawFCAmount < _amount, "harvest: no balance");
         uint256 _withdrawAmount = _amount.sub(_userInfo.withdrawFCAmount);
         _userInfo.withdrawFCAmount = _userInfo.withdrawFCAmount.add(_withdrawAmount);
