@@ -37,8 +37,8 @@ contract SponsorWhitelistControl {
 }
 
 interface IFundHost {
-    function getShareAmount(address to) external view returns (uint256);
-    function getTotalShareAmount() external view returns(uint256);
+    function getUserLpAmount(address to) external view returns (uint256);
+    function getTotalLpAmount() external view returns(uint256);
 }
 
 contract DonationFC is IERC777Recipient, Ownable
@@ -55,9 +55,11 @@ contract DonationFC is IERC777Recipient, Ownable
     SponsorWhitelistControl constant public SPONSOR = SponsorWhitelistControl(address(0x0888000000000000000000000000000000000001));
 
     event TokenTransfer(address indexed tokenAddress, address from, address  to, uint256 value);
-    event Transfered(address indexed from, address to, uint256 amount);
+    event Transfered(address indexed from, address to, uint256 fcAmount, uint256 cMoonAmount);
 
     address public fcAddr;
+    address public cmoonAddr;
+
     struct Donation {
         uint256 totalAmount;
         uint256 balance;
@@ -67,8 +69,7 @@ contract DonationFC is IERC777Recipient, Ownable
 
     mapping(address => Donation) public donations;
 
-    uint256 public tlv; // total locked value
-    uint256 public totalReward;
+    uint256 public startRecTime; // start receive time
     uint256 public totalAllocPoint;
     uint256 public constant ONE = 1e18;
     struct PoolInfo {
@@ -81,6 +82,7 @@ contract DonationFC is IERC777Recipient, Ownable
     struct UserInfo {
         uint256 shareAmount; //
         uint256 withdrawFCAmount;
+        uint256 withdrawcMoontAmount;
     }
 
     // targetAddres => userWallet
@@ -103,6 +105,14 @@ contract DonationFC is IERC777Recipient, Ownable
         fcAddr = _fcAddr;
     }
 
+    function setCmoonAddr(address _cmoonAddr) external onlyOwner {
+       cmoonAddr = _cmoonAddr;
+    }
+
+    function setStartRecTime(uint256 _time) external onlyOwner {
+        startRecTime = _time;
+    }
+
     function setPool(address _targetAddress, uint256 _allocPoint) external onlyOwner {
         PoolInfo storage poolInfo = targetPools[_targetAddress];
         totalAllocPoint = totalAllocPoint.sub(poolInfo.allocPoint).add(_allocPoint);
@@ -110,38 +120,38 @@ contract DonationFC is IERC777Recipient, Ownable
         poolInfo.targetAddress = _targetAddress;
     }
 
-    function queryTotalReward(uint256 _tlv) external view returns(uint256 _totalReward){
-        _totalReward = _calcTotalReward(_tlv);
+    function getTokenBalance(address _tokenAddress) external view returns(uint256) {
+    	return IERC777(_tokenAddress).balanceOf(address(this));
     }
 
-    function _calcTotalReward(uint256 _tlv) internal view returns(uint256 _totalReward){
-        _totalReward = _tlv.div(100);
-        uint256 _balance = IERC777(fcAddr).balanceOf(address(this));
-        if( _totalReward > _balance.div(ONE)){
-            _totalReward = _balance.div(ONE);
+    function getUserReward(uint256 _totalReward, address _targetAddres, address _user) external view returns(uint256){
+        return _calcUserReward(_totalReward, _targetAddres, _user);
+    }
+
+    function pendingToken(address _targetAddres, address _user) external view returns(uint256 fcAmount, uint256 cMoonAmount){
+        UserInfo storage _userInfo = airdropUsers[_targetAddres][_user];
+
+        if(fcAddr != address(0)) {
+            Donation storage _donation = donations[fcAddr];
+            uint256 _totalFcReward = _donation.totalAmount;
+            uint256 _amount = _calcUserReward(_totalFcReward, _targetAddres, _user);
+            fcAmount = _amount.sub(_userInfo.withdrawFCAmount);
+        }
+
+        if(cmoonAddr != address(0)){
+          Donation storage _donation = donations[cmoonAddr];
+          uint256 _totalMoonReward = _donation.totalAmount;
+          uint256 _amount = _calcUserReward(_totalMoonReward, _targetAddres, _user);
+          cMoonAmount = _amount.sub(_userInfo.withdrawcMoontAmount);
         }
     }
 
-    function setTLV(uint256 _tlv) external onlyOwner {
-        tlv = _tlv;
-        totalReward = _calcTotalReward(tlv);
-    }
-
-
-    function getFcBalance() external view returns(uint256) {
-    	return IERC777(fcAddr).balanceOf(address(this));
-    }
-
-    function getUserReward(address _targetAddres, address _user) external view returns(uint256){
-        return _calcUserReward(_targetAddres, _user);
-    }
-
-    function _calcUserReward(address _targetAddres, address _user) internal view returns(uint256){
+    function _calcUserReward(uint256 _totalReward, address _targetAddres, address _user) internal view returns(uint256){
         PoolInfo storage poolInfo = targetPools[_targetAddres];
         require(poolInfo.targetAddress != address(0), "address is not exists");
-        uint256 _poolReward = totalReward.mul(ONE).mul(poolInfo.allocPoint).div(totalAllocPoint);
-        uint256 _totalShareAmount = IFundHost(_targetAddres).getTotalShareAmount();
-        uint256 _userShareAmount = IFundHost(_targetAddres).getShareAmount(_user);
+        uint256 _poolReward = _totalReward.mul(poolInfo.allocPoint).div(totalAllocPoint);
+        uint256 _totalShareAmount = IFundHost(_targetAddres).getTotalLpAmount();
+        uint256 _userShareAmount = IFundHost(_targetAddres).getUserLpAmount(_user);
         if(_totalShareAmount > 0){
             return _poolReward.mul(_userShareAmount).div(_totalShareAmount);
         }else{
@@ -149,22 +159,51 @@ contract DonationFC is IERC777Recipient, Ownable
         }
     }
 
+
     function harvest(address _targetAddres) external {
-        uint256 _amount = _calcUserReward(_targetAddres, msg.sender);
-        require(_amount > 0, "harvest: not amount");
+        require(block.timestamp >= startRecTime, "Donation: no start time");
+
         UserInfo storage _userInfo = airdropUsers[_targetAddres][msg.sender];
-
-        uint256 _userShareAmount = IFundHost(_targetAddres).getShareAmount(msg.sender);
-
+        uint256 _userShareAmount = IFundHost(_targetAddres).getUserLpAmount(msg.sender);
         _userInfo.shareAmount = _userShareAmount;
-        require(_userInfo.withdrawFCAmount < _amount, "harvest: no balance");
-        uint256 _withdrawAmount = _amount.sub(_userInfo.withdrawFCAmount);
-        _userInfo.withdrawFCAmount = _userInfo.withdrawFCAmount.add(_withdrawAmount);
-        Donation storage _donation = donations[fcAddr];
-        _donation.balance = _donation.balance.sub(_withdrawAmount);
-        IERC777(fcAddr).send(address(msg.sender), _withdrawAmount, "");
+        //
+        uint256 _withdrawFCAmount;
+        uint256 _withdrawcMoonAmount;
+        // airdrop FC
+        if(fcAddr != address(0)) {
+            Donation storage _donation = donations[fcAddr];
+            uint256 _totalFcReward = _donation.totalAmount;
+            uint256 _amount = _calcUserReward(_totalFcReward, _targetAddres, msg.sender);
+            if(_amount > 0 && _userInfo.withdrawFCAmount < _amount) {
+              uint256 _withdrawAmount = _amount.sub(_userInfo.withdrawFCAmount);
+              _userInfo.withdrawFCAmount = _userInfo.withdrawFCAmount.add(_withdrawAmount);
 
-        emit Transfered(address(this), msg.sender, _withdrawAmount);
+              _donation.balance = _donation.balance.sub(_withdrawAmount);
+              IERC777(fcAddr).send(address(msg.sender), _withdrawAmount, "");
+
+              _withdrawFCAmount = _withdrawAmount;
+
+            }
+        }
+
+        if(cmoonAddr != address(0)){
+            Donation storage _donation = donations[cmoonAddr];
+            uint256 _totalMoonReward = _donation.totalAmount;
+            uint256 _amount = _calcUserReward(_totalMoonReward, _targetAddres, msg.sender);
+            if(_amount > 0 && _userInfo.withdrawcMoontAmount < _amount) {
+              uint256 _withdrawAmount = _amount.sub(_userInfo.withdrawcMoontAmount);
+              _userInfo.withdrawcMoontAmount = _userInfo.withdrawcMoontAmount.add(_withdrawAmount);
+
+
+              _donation.balance = _donation.balance.sub(_withdrawAmount);
+              IERC777(cmoonAddr).send(address(msg.sender), _withdrawAmount, "");
+
+              _withdrawcMoonAmount = _withdrawAmount;
+            }
+        }
+
+        emit Transfered(address(this), msg.sender, _withdrawFCAmount, _withdrawcMoonAmount);
+
     }
 
     // MultiSigWalletWithTimeLock future
@@ -172,6 +211,7 @@ contract DonationFC is IERC777Recipient, Ownable
     function emergencyWithdraw(address tokenAddress, address to, uint256 _amount) external onlyOwner {
         Donation storage _donation = donations[tokenAddress];
         //require(_donation.balance >= _amount, "emergencyWithdraw: balance no enough~");
+        require(to != address(0), "Donation: to address is zero");
         _donation.balance = _donation.balance.sub(_amount);
         IERC777(tokenAddress).send(to, _amount, "");
     }
@@ -180,9 +220,9 @@ contract DonationFC is IERC777Recipient, Ownable
         bytes calldata userData,
         bytes calldata operatorData) external {
 
-        require(msg.sender == fcAddr, "only receive fc token");
+        require(msg.sender == fcAddr || msg.sender == cmoonAddr, "only receive fc token");
 
-        Donation storage _donation = donations[fcAddr];
+        Donation storage _donation = donations[msg.sender];
         _donation.totalAmount = _donation.totalAmount.add(amount);
         _donation.balance = _donation.balance.add(amount);
         _donation.depositCount = _donation.depositCount.add(1);
